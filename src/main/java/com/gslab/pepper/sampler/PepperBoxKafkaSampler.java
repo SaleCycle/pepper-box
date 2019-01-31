@@ -24,10 +24,9 @@ import org.apache.zookeeper.ZooKeeper;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The PepperBoxKafkaSampler class custom java sampler for jmeter.
@@ -166,16 +165,25 @@ public class PepperBoxKafkaSampler extends AbstractJavaSamplerClient {
         SampleResult sampleResult = new SampleResult();
         sampleResult.sampleStart();
         Object message_val = JMeterContextService.getContext().getVariables().getObject(msg_val_placeHolder);
+        for (Map.Entry<String, Object> entry : JMeterContextService.getContext().getVariables().entrySet()) {
+            log.debug(String.format("key: %s, value: %s", entry.getKey(), entry.getValue()));
+        }
         ProducerRecord<String, Object> producerRecord;
         try {
+            List<String> variableKeys = extractVariableKeys(message_val);
+            for (String k: variableKeys){
+                log.debug(String.format("variable key: %s", k));
+            }
+            Object expandedMessage = replaceVariables(message_val, variableKeys, JMeterContextService.getContext().getVariables());
+            log.debug(String.format("expanded message: %s", expandedMessage));
             if (key_message_flag) {
                 Object message_key = JMeterContextService.getContext().getVariables().getObject(msg_key_placeHolder);
-                producerRecord = new ProducerRecord<String, Object>(topic, message_key.toString(), message_val);
+                producerRecord = new ProducerRecord<String, Object>(topic, message_key.toString(), expandedMessage);
             } else {
-                producerRecord = new ProducerRecord<String, Object>(topic, message_val);
+                producerRecord = new ProducerRecord<String, Object>(topic, expandedMessage);
             }
             producer.send(producerRecord);
-            sampleResult.setResponseData(message_val.toString(), StandardCharsets.UTF_8.name());
+            sampleResult.setResponseData(expandedMessage.toString(), StandardCharsets.UTF_8.name());
             sampleResult.setSuccessful(true);
             sampleResult.sampleEnd();
 
@@ -188,6 +196,33 @@ public class PepperBoxKafkaSampler extends AbstractJavaSamplerClient {
         }
 
         return sampleResult;
+    }
+
+    private List<String> extractVariableKeys(Object message) {
+        List<String> keys = new ArrayList<>();
+        if (message instanceof String) {
+            String messageStr = message.toString();
+            Pattern pattern = Pattern.compile("\\$\\{([a-zA-Z0-9_-]+)\\}");
+            Matcher matcher = pattern.matcher(messageStr);
+            while(matcher.find()) {
+                keys.add(matcher.group(1));
+            }
+        }
+        return keys;
+    }
+
+    private Object replaceVariables(Object message, List<String> keys, JMeterVariables variables) {
+        if (message instanceof String) {
+            String messageStr = message.toString();
+            for (String k : keys) {
+                Object value = variables.getObject(k);
+                if (value != null) {
+                    messageStr = messageStr.replaceAll(String.format("\\$\\{%s\\}", k), value.toString());
+                }
+            }
+            return messageStr;
+        }
+        return message;
     }
 
     @Override
