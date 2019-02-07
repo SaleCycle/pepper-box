@@ -68,7 +68,7 @@ jobs:
       - run:
           name: upload package
           command: |
-            aws --region eu-west-1 s3 cp target/ $S3_OUTPUT_PATH/ --recursive  --exclude "*" --include "pepper-box-*.jar"
+            aws --region eu-west-1 s3 cp target/ $S3_OUTPUT_PATH/ --recursive  --exclude "*" --include "pepper-box-*.jar"  --exclude "original-*"
 
 workflows:
   version: 2
