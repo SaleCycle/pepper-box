@@ -78,5 +78,6 @@ workflows:
       - publish:
           requires:
             - build
+          filters:
             branches:
               only: jmeter5.0_kafka1.1.1
